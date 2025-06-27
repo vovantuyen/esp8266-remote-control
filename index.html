@@ -1,142 +1,270 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Điều khiển ESP8266</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
-        .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #333; }
-        button {
-            display: block;
-            width: 100%;
-            padding: 15px;
-            margin-bottom: 10px;
-            font-size: 18px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        button:hover { background-color: #45a049; }
-        .status-section { margin-top: 20px; padding: 15px; background-color: #e9e9e9; border-radius: 5px; }
-        .status-item { margin-bottom: 10px; font-size: 16px; }
-        .status-label { font-weight: bold; }
-        .status-value { float: right; }
-    </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
-</head>
-<body>
-    <div class="container">
-        <h2>Điều khiển thiết bị</h2>
+import React, { useEffect, useState } from 'react';
+import { Thermometer, Droplets, Power, WifiOff, Wifi, Loader, RefreshCw } from 'lucide-react';
 
-        <button onclick="publishCommand('out1', true)">BẬT Thiết bị 1</button>
-        <button onclick="publishCommand('out1', false)">TẮT Thiết bị 1</button>
-        <hr>
-        <button onclick="publishCommand('out2', true)">BẬT Thiết bị 2</button>
-        <button onclick="publishCommand('out2', false)">TẮT Thiết bị 2</button>
+function App() {
+  // Thay đổi IP này thành địa chỉ IP thực của ESP8266 của bạn khi nó kết nối Wi-Fi.
+  // Bạn có thể tìm thấy IP này từ Serial Monitor của ESP8266 hoặc từ router của mình.
+  const ESP8266_IP = "YOUR_ESP8266_IP_ADDRESS"; // <-- CẬP NHẬT IP NÀY
 
-        <div class="status-section">
-            <h3>Trạng thái & Dữ liệu</h3>
-            <div class="status-item">
-                <span class="status-label">Nhiệt độ:</span> <span id="temperature" class="status-value">-- °C</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Độ ẩm:</span> <span id="humidity" class="status-value">-- %</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Thiết bị 1:</span> <span id="out1_status" class="status-value">Tắt</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Thiết bị 2:</span> <span id="out2_status" class="status-value">Tắt</span>
-            </div>
-            <p style="font-size: 12px; text-align: center;">Trạng thái kết nối: <span id="connection_status">Đang kết nối...</span></p>
+  const [isDeviceReachable, setIsDeviceReachable] = useState(false);
+  const [temperature, setTemperature] = useState(null);
+  const [humidity, setHumidity] = useState(null);
+  const [out1State, setOut1State] = useState(false);
+  const [out2State, setOut2State] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("Đang cố gắng kết nối với thiết bị...");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  // Function to fetch DHT data from ESP8266
+  const fetchDHTData = async () => {
+    if (!ESP8266_IP || ESP8266_IP === "YOUR_ESP8266_IP_ADDRESS") {
+        setErrorMessage("Vui lòng cập nhật địa chỉ IP của ESP8266 trong mã nguồn!");
+        setIsDeviceReachable(false);
+        return;
+    }
+    try {
+      setLoadingMessage("Đang tải dữ liệu cảm biến...");
+      const response = await fetch(`http://${ESP8266_IP}/dht`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      if (data.error) {
+          setErrorMessage(`Lỗi đọc cảm biến: ${data.error}`);
+          setTemperature(null);
+          setHumidity(null);
+      } else {
+          setTemperature(data.temperature);
+          setHumidity(data.humidity);
+          setErrorMessage("");
+      }
+      setIsDeviceReachable(true);
+      setLoadingMessage("");
+    } catch (error) {
+      console.error("Lỗi khi tải dữ liệu DHT:", error);
+      setIsDeviceReachable(false);
+      setTemperature(null);
+      setHumidity(null);
+      setLoadingMessage("");
+      setErrorMessage(`Không thể kết nối với thiết bị ESP8266 tại ${ESP8266_IP}. Vui lòng kiểm tra IP và kết nối.`);
+    }
+  };
+
+  // Function to fetch current relay states
+  const fetchRelayStates = async () => {
+    if (!ESP8266_IP || ESP8266_IP === "YOUR_ESP8266_IP_ADDRESS") {
+        setErrorMessage("Vui lòng cập nhật địa chỉ IP của ESP8266 trong mã nguồn!");
+        setIsDeviceReachable(false);
+        return;
+    }
+    try {
+      setLoadingMessage("Đang tải trạng thái relay...");
+      const response = await fetch(`http://${ESP8266_IP}/relay`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setOut1State(data.out1);
+      setOut2State(data.out2);
+      setIsDeviceReachable(true);
+      setLoadingMessage("");
+      setErrorMessage("");
+    } catch (error) {
+      console.error("Lỗi khi tải trạng thái relay:", error);
+      setIsDeviceReachable(false);
+      setLoadingMessage("");
+      setErrorMessage(`Không thể kết nối với thiết bị ESP8266 tại ${ESP8266_IP}. Vui lòng kiểm tra IP và kết nối.`);
+    }
+  };
+
+  // Function to send relay control command
+  const sendRelayCommand = async (relayId, state) => {
+    if (!ESP8266_IP || ESP8266_IP === "YOUR_ESP8266_IP_ADDRESS") {
+        setErrorMessage("Vui lòng cập nhật địa chỉ IP của ESP8266 trong mã nguồn!");
+        setIsDeviceReachable(false);
+        return;
+    }
+    try {
+      setLoadingMessage(`Đang gửi lệnh đến Relay ${relayId}...`);
+      const payload = {};
+      if (relayId === 1) {
+        payload.out1 = state;
+      } else if (relayId === 2) {
+        payload.out2 = state;
+      }
+
+      const response = await fetch(`http://${ESP8266_IP}/relay`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      // Update state based on the response from ESP8266, ensuring sync
+      setOut1State(data.out1);
+      setOut2State(data.out2);
+      setIsDeviceReachable(true);
+      setLoadingMessage("");
+      setErrorMessage("");
+      console.log(`Đã gửi lệnh điều khiển relay ${relayId}: ${state}`);
+    } catch (error) {
+      console.error("Lỗi khi gửi lệnh điều khiển relay:", error);
+      setIsDeviceReachable(false);
+      setLoadingMessage("");
+      setErrorMessage(`Không thể kết nối với thiết bị ESP8266 tại ${ESP8266_IP} để gửi lệnh.`);
+    }
+  };
+
+  useEffect(() => {
+    // Initial fetch of data and relay states
+    fetchDHTData();
+    fetchRelayStates();
+
+    // Set up interval to refresh data periodically
+    const interval = setInterval(() => {
+      fetchDHTData();
+      fetchRelayStates();
+    }, 5000); // Refresh every 5 seconds
+
+    return () => clearInterval(interval); // Clean up interval on unmount
+  }, [ESP8266_IP]); // Re-run if IP changes
+
+  const toggleOut1 = () => {
+    sendRelayCommand(1, !out1State);
+  };
+
+  const toggleOut2 = () => {
+    sendRelayCommand(2, !out2State);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-gray-100 font-inter flex flex-col items-center justify-center p-4">
+      <script src="https://cdn.tailwindcss.com"></script>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+      <div className="bg-gray-800 rounded-xl shadow-2xl p-8 max-w-lg w-full flex flex-col items-center space-y-6">
+        {/* Header */}
+        <h1 className="text-4xl font-extrabold text-blue-400 mb-6 text-center">
+          Điều Khiển Thiết Bị ESP8266
+        </h1>
+
+        {/* Connection Status */}
+        <div className="flex items-center space-x-3 mb-4">
+          {isDeviceReachable ? (
+            <Wifi className="w-8 h-8 text-green-400" />
+          ) : loadingMessage ? (
+            <Loader className="w-8 h-8 text-yellow-400 animate-spin" />
+          ) : (
+            <WifiOff className="w-8 h-8 text-red-400" />
+          )}
+          <span className="text-xl font-medium">
+            {isDeviceReachable ? "Thiết Bị Đã Sẵn Sàng" : loadingMessage || "Không Thể Kết Nối Thiết Bị"}
+          </span>
+          <button
+            onClick={() => { fetchDHTData(); fetchRelayStates(); }}
+            className="ml-4 p-2 rounded-full bg-gray-700 hover:bg-gray-600 transition-colors duration-200"
+            title="Refresh Data"
+          >
+            <RefreshCw className="w-6 h-6 text-gray-300" />
+          </button>
         </div>
+
+        {errorMessage && (
+          <div className="bg-red-600 text-white p-3 rounded-lg w-full text-center text-sm font-medium">
+            {errorMessage}
+          </div>
+        )}
+
+        {/* Sensor Data */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+          <div className="bg-gray-700 p-6 rounded-lg flex flex-col items-center shadow-lg transform transition-transform duration-300 hover:scale-105 hover:bg-gray-600">
+            <Thermometer className="w-12 h-12 text-orange-400 mb-3" />
+            <span className="text-2xl font-bold">Nhiệt Độ</span>
+            <span className="text-4xl font-extrabold text-white mt-2">
+              {temperature !== null ? `${temperature.toFixed(1)}°C` : "---"}
+            </span>
+          </div>
+
+          <div className="bg-gray-700 p-6 rounded-lg flex flex-col items-center shadow-lg transform transition-transform duration-300 hover:scale-105 hover:bg-gray-600">
+            <Droplets className="w-12 h-12 text-blue-400 mb-3" />
+            <span className="text-2xl font-bold">Độ Ẩm</span>
+            <span className="text-4xl font-extrabold text-white mt-2">
+              {humidity !== null ? `${humidity.toFixed(1)}%` : "---"}
+            </span>
+          </div>
+        </div>
+
+        {/* Relay Controls */}
+        <div className="w-full space-y-4 pt-4">
+          <h2 className="text-2xl font-bold text-center text-gray-200">Điều Khiển Relay</h2>
+
+          {/* Relay 1 */}
+          <button
+            onClick={toggleOut1}
+            disabled={!isDeviceReachable}
+            className={`w-full flex items-center justify-center p-4 rounded-lg shadow-md transition-all duration-300 transform
+                        ${out1State ? 'bg-green-600 hover:bg-green-700 active:scale-98' : 'bg-gray-600 hover:bg-gray-700 active:scale-98'}
+                        ${!isDeviceReachable ? 'opacity-50 cursor-not-allowed' : ''}
+                        relative overflow-hidden group`}
+          >
+            <span className="text-2xl font-semibold text-white relative z-10 mr-4">Relay 1</span>
+            <Power
+              className={`w-10 h-10 transition-all duration-300 relative z-10
+                          ${out1State ? 'text-white' : 'text-gray-300'}`}
+              style={{ filter: out1State ? 'drop-shadow(0 0 8px rgba(255,255,255,0.7))' : 'none' }}
+            />
+            {out1State && (
+              <span className="absolute inset-0 bg-green-500 opacity-20 animate-pulse-light rounded-lg"></span>
+            )}
+            <span className="absolute inset-0 bg-gradient-to-br from-transparent to-black opacity-10 group-hover:opacity-20 transition-opacity duration-300"></span>
+          </button>
+
+          {/* Relay 2 */}
+          <button
+            onClick={toggleOut2}
+            disabled={!isDeviceReachable}
+            className={`w-full flex items-center justify-center p-4 rounded-lg shadow-md transition-all duration-300 transform
+                        ${out2State ? 'bg-green-600 hover:bg-green-700 active:scale-98' : 'bg-gray-600 hover:bg-gray-700 active:scale-98'}
+                        ${!isDeviceReachable ? 'opacity-50 cursor-not-allowed' : ''}
+                        relative overflow-hidden group`}
+          >
+            <span className="text-2xl font-semibold text-white relative z-10 mr-4">Relay 2</span>
+            <Power
+              className={`w-10 h-10 transition-all duration-300 relative z-10
+                          ${out2State ? 'text-white' : 'text-gray-300'}`}
+              style={{ filter: out2State ? 'drop-shadow(0 0 8px rgba(255,255,255,0.7))' : 'none' }}
+            />
+            {out2State && (
+              <span className="absolute inset-0 bg-green-500 opacity-20 animate-pulse-light rounded-lg"></span>
+            )}
+            <span className="absolute inset-0 bg-gradient-to-br from-transparent to-black opacity-10 group-hover:opacity-20 transition-opacity duration-300"></span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tailwind CSS Setup for CDN (for Canvas preview) */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+          font-family: 'Inter', sans-serif;
+        }
+        /* Custom animation for pulsating light effect */
+        @keyframes pulse-light {
+          0% { box-shadow: 0 0 0px rgba(0,255,0,0.4); }
+          50% { box-shadow: 0 0 15px rgba(0,255,0,0.8), 0 0 25px rgba(0,255,0,0.6); }
+          100% { box-shadow: 0 0 0px rgba(0,255,0,0.4); }
+        }
+        .animate-pulse-light {
+          animation: pulse-light 2s infinite ease-in-out;
+        }
+      `}</style>
     </div>
+  );
+}
 
-    <script>
-        // Cấu hình MQTT Broker (thay thế bằng thông tin HiveMQ của bạn)
-        const host = "e050d42a346b4aa783baad6c46147053.s1.eu.hivemq.cloud"; // Host của bạn
-        const port = 8883; // Port SSL/TLS
-        const username = "vvt1998"; // Username của bạn
-        const password = "12345Aa@"; // Password của bạn
-        const clientID = "web_client_" + parseInt(Math.random() * 100); // Client ID ngẫu nhiên
-
-        let client;
-
-        // Khởi tạo và kết nối tới MQTT Broker
-        function connectMQTT() {
-            client = new Paho.MQTT.Client(host, port, clientID);
-
-            client.onConnectionLost = onConnectionLost;
-            client.onMessageArrived = onMessageArrived;
-
-            const connectOptions = {
-                userName: vvt1998,
-                password: 12345Aa@,
-                useSSL: true, // Quan trọng: Sử dụng SSL/TLS
-                onSuccess: onConnect,
-                onFailure: onFailure
-            };
-
-            client.connect(connectOptions);
-            document.getElementById('connection_status').innerText = 'Đang kết nối...';
-        }
-
-        function onConnect() {
-            console.log("Đã kết nối MQTT Broker.");
-            document.getElementById('connection_status').innerText = 'Đã kết nối';
-            // Đăng ký các topic để nhận dữ liệu từ ESP8266
-            client.subscribe("esp8266/dht11", { qos: 0 });
-            client.subscribe("esp8266/out", { qos: 0 });
-            console.log("Đã đăng ký các topic: esp8266/dht11, esp8266/out");
-        }
-
-        function onFailure(responseObject) {
-            console.log("Kết nối thất bại: " + responseObject.errorMessage);
-            document.getElementById('connection_status').innerText = 'Mất kết nối! Đang thử lại...';
-            setTimeout(connectMQTT, 5000); // Thử kết nối lại sau 5 giây
-        }
-
-        function onConnectionLost(responseObject) {
-            if (responseObject.errorCode !== 0) {
-                console.log("Mất kết nối: " + responseObject.errorMessage);
-                document.getElementById('connection_status').innerText = 'Mất kết nối! Đang thử lại...';
-                setTimeout(connectMQTT, 5000); // Thử kết nối lại sau 5 giây
-            }
-        }
-
-        function onMessageArrived(message) {
-            console.log("Tin nhắn đến từ [" + message.destinationName + "]: " + message.payloadString);
-            try {
-                const data = JSON.parse(message.payloadString);
-                if (message.destinationName === "esp8266/dht11") {
-                    document.getElementById('temperature').innerText = (data.temperature ? data.temperature.toFixed(1) : '--') + " °C";
-                    document.getElementById('humidity').innerText = (data.humidity ? data.humidity.toFixed(1) : '--') + " %";
-                } else if (message.destinationName === "esp8266/out") {
-                    document.getElementById('out1_status').innerText = data.out1 ? 'Bật' : 'Tắt';
-                    document.getElementById('out2_status').innerText = data.out2 ? 'Bật' : 'Tắt';
-                }
-            } catch (e) {
-                console.error("Lỗi parse JSON:", e);
-            }
-        }
-
-        // Gửi lệnh điều khiển tới ESP8266
-        function publishCommand(outputKey, state) {
-            const topic = "esp8266/client";
-            const payload = JSON.stringify({ [outputKey]: state }); // Tạo JSON payload động
-            const message = new Paho.MQTT.Message(payload);
-            message.destinationName = topic;
-            message.retained = true; // Giữ lại trạng thái trên broker
-            client.send(message);
-            console.log("Đã gửi lệnh [" + topic + "]: " + payload);
-        }
-
-        // Bắt đầu kết nối khi trang tải xong
-        window.onload = connectMQTT;
-    </script>
-</body>
-</html>
+export default App;
